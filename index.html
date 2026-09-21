@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#13161b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%AA%99%3C/text%3E%3C/svg%3E">
+<title>On-chain assets</title>
+<style>
+  :root{
+    --bg:#13161b; --surface:#1a1f27; --line:#2a313c;
+    --text:#e9e7e2; --muted:#8a92a0; --gold:#d8b46a;
+    --up:#62c29a; --down:#e27a66;
+    --sans:"Hiragino Sans","Noto Sans JP","Yu Gothic",system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-text-size-adjust:100%}
+  body{padding:max(20px,env(safe-area-inset-top)) 18px max(32px,env(safe-area-inset-bottom));max-width:560px;margin:0 auto}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+
+  header{padding:8px 0 22px}
+  .total-label{font-size:13px;color:var(--muted);margin:0 0 6px}
+  .total{font-size:clamp(26px,8.4vw,42px);line-height:1.1;white-space:nowrap;font-weight:700;letter-spacing:-.02em;color:var(--gold);margin:0}
+  .total small{font-size:22px;font-weight:600;opacity:.7}
+  .idr{margin:8px 0 0;font-size:14px;color:var(--muted)}
+  .deltas{display:flex;gap:18px;margin-top:14px;font-size:14px;flex-wrap:wrap}
+  .deltas span{color:var(--muted)}
+  .deltas b{font-weight:600;margin-left:6px}
+  .up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--muted)}
+
+  .bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--line);margin:4px 0 6px}
+  .bar i{display:block;height:100%}
+  .bar i+i{margin-left:1px}
+
+  .toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:18px 0 4px;font-size:13px;color:var(--muted)}
+  .tb-left{min-width:0}
+  #asof{color:var(--text);font-size:14px;font-weight:600}
+  #asof.warn{color:var(--gold)}
+  #asof small{font-weight:400;color:var(--muted);font-size:13px}
+  #status{margin-top:2px}
+  #status.err{color:var(--down)}
+  button{font:inherit;cursor:pointer}
+  #refresh{background:transparent;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 16px;font-size:14px;flex:none}
+  #refresh:active{background:var(--surface)}
+  #refresh[disabled]{opacity:.5}
+  #refresh:focus-visible,input:focus-visible,#reset:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+  ul{list-style:none;margin:0;padding:0}
+  li.row{padding:14px 0;border-bottom:1px solid var(--line)}
+  .l1,.l2{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .sym{display:flex;align-items:baseline;gap:8px;min-width:0}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none;transform:translateY(-1px)}
+  .sym strong{font-size:17px;font-weight:700}
+  .sym span.desc{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .val{font-size:17px;font-weight:600;white-space:nowrap;flex:none}
+  .l2{margin-top:6px;font-size:13px;color:var(--muted)}
+  .l2 .left{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+  input{font:inherit;color:var(--text);background:transparent;border:0;border-bottom:1px dashed #4a5361;border-radius:0;padding:2px 0;width:8.5em;font-size:14px;-webkit-appearance:none;appearance:none}
+  input.px{width:6.5em;border-bottom-color:var(--gold)}
+  .tag{font-size:11px;color:var(--gold);border:1px solid #5a4b2b;border-radius:4px;padding:0 5px}
+  .right{text-align:right}
+
+  footer{margin-top:22px;font-size:12px;line-height:1.7;color:var(--muted)}
+  #reset{background:none;border:0;color:var(--muted);text-decoration:underline;padding:0;font-size:12px}
+</style>
+</head>
+<body>
+
+<header>
+  <p class="total-label">総評価額</p>
+  <p class="total num" id="totalMain">—</p>
+  <p class="idr num" id="totalSub"></p>
+  <div class="deltas num">
+    <span>24時間<b id="d24" class="flat">—</b></span>
+    <span>記録時比<b id="dBase" class="flat">—</b></span>
+  </div>
+</header>
+
+<div class="bar" id="bar" aria-hidden="true"></div>
+
+<div class="toolbar">
+  <div class="tb-left"><div id="asof" class="num"></div><div id="status">最新価格を取得中…</div></div>
+  <button id="refresh" type="button">更新</button>
+</div>
+
+<ul id="list"></ul>
+
+<footer>
+  保有量はシート「25aug」の値で登録済み。保有量・価格欄はタップして直接編集できます（この端末のブラウザに保存）。<br>
+  評価額は Rp 表示です（USD/IDR は open.er-api.com から取得、失敗時は USDT/IDR で代用）。暗号資産の価格は CoinGecko、QQQ は Yahoo Finance から60秒ごとに取得します。取得できない銘柄は価格欄が入力可能になり、前回または記録時の価格で計算します。<br>
+  記録時 = シート「25aug」の価格。 <button id="reset" type="button">保有量と価格を初期値に戻す</button><br>版：v3 Web版
+</footer>
+
+<script>
+(() => {
+  // ---- 初期データ（スクリーンショットのシートから復元） -------------------
+  // qty: シート「25aug」の保有量（表示値）
+  const ASSETS = [
+    { id:'BTC',   cg:'bitcoin',      desc:'デジタルゴールド',       qty:1.536,  base:80500, color:'#e0a458' },
+    { id:'ETH',   cg:'ethereum',     desc:'スマートコントラクト基盤', qty:17.337, base:2500,  color:'#8f9bd6' },
+    { id:'SOL',   cg:'solana',       desc:'高速レイヤー1',           qty:233.100,    base:100,   color:'#5fc9b0' },
+    { id:'BNB',   cg:'binancecoin',  desc:'',                        qty:5.944,     base:716,   color:'#d6c04f' },
+    { id:'NEXO',  cg:'nexo',         desc:'',                        qty:14605.79,  base:0.84,  color:'#6aa3d9' },
+    { id:'USDT',  cg:'tether',       desc:'',                        qty:1371,      base:1,     color:'#4f9d86' },
+    { id:'HYPE',  cg:'hyperliquid',  desc:'デリバティブ市場',        qty:57.16,    base:80,    color:'#9be0c8' },
+    { id:'LINK',  cg:'chainlink',    desc:'Oracle・クロスチェーン',  qty:466.94,    base:11.5,  color:'#5b7fe0' },
+    { id:'Pendle',cg:'pendle',       desc:'',                        qty:1686.63,   base:1.7,   color:'#c98ad4' },
+    { id:'QQQ',   cg:null,           desc:'Nasdaq、AI革命',          qty:2.1,       base:706,   color:'#e07a7a' },
+  ];
+  const KEY = 'onchain-tracker-v2';
+  const REFRESH_MS = 60000;
+  const FALLBACK_RATE = 17740;   // 通信できない時の概算 USD/IDR（2026-09-18 時点）
+
+  // ---- 状態 ---------------------------------------------------------------
+  const saved = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } })();
+  const state = {
+    qty:    saved.qty    || {},   // id -> number（ユーザー編集分）
+    prices: saved.prices || {},   // id -> {p, chg, t, manual}
+    usdidr: saved.usdidr || FALLBACK_RATE,
+    updated:saved.updated|| null,
+  };
+  const live = new Set();          // 今回の取得に成功した銘柄
+  let statusMsg = '最新価格を取得中…', statusErr = false, busy = false, tetherRate = null, rateLive = false;
+
+  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} };
+  const $ = s => document.querySelector(s);
+
+  // ---- 表示ヘルパー ---------------------------------------------------------
+  const usd = (n, d=2) => '$' + n.toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
+  const idr = n => 'Rp ' + Math.round(n).toLocaleString('id-ID');
+  const pct = n => (n>0?'+':'') + n.toFixed(2) + '%';
+  const cls = n => n>0.005 ? 'up' : n<-0.005 ? 'down' : 'flat';
+  const priceFmt = p => p >= 1000 ? usd(p,0) : p >= 10 ? usd(p,2) : usd(p,4);
+  const qtyOf   = a => state.qty[a.id] ?? a.qty;
+  const priceOf = a => state.prices[a.id]?.p ?? a.base;
+  const chgOf   = a => state.prices[a.id]?.chg;
+  const toNum   = s => { const n = parseFloat(String(s).replace(/[,\s]/g,'')); return isFinite(n) && n >= 0 ? n : null; };
+  const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  // ---- 価格の時点表示 ---------------------------------------------------------
+  function fmtTime(ts) {
+    const d = new Date(ts), now = new Date();
+    const hm = d.toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit', hour12:false});
+    const y = d.getFullYear() !== now.getFullYear() ? d.getFullYear() + '/' : '';
+    return `${y}${d.getMonth()+1}/${d.getDate()} ${hm}`;   // 常に月/日 時:分
+  }
+  function fmtAge(ts) {
+    const m = Math.floor((Date.now() - ts) / 60000);
+    if (m < 1) return 'たった今';
+    if (m < 60) return `${m}分前`;
+    const h = Math.floor(m / 60);
+    return h < 24 ? `${h}時間前` : `${Math.floor(h/24)}日前`;
+  }
+  function paintAsof() {
+    const el = $('#asof');
+    if (!state.updated) { el.innerHTML = '表示中の価格：シート記録時 <small>（未更新）</small>'; el.className = 'num warn'; return; }
+    const old = Date.now() - state.updated > 10 * 60000;
+    el.innerHTML = `表示中の価格：${fmtTime(state.updated)} 時点 <small>（${fmtAge(state.updated)}）</small>`;
+    el.className = 'num' + (old ? ' warn' : '');
+  }
+
+  // ---- 描画 ---------------------------------------------------------------
+  function render() {
+    const rows = ASSETS.map(a => {
+      const q = qtyOf(a), p = priceOf(a);
+      return { a, q, p, v: q*p, chg: chgOf(a) };
+    });
+    const total = rows.reduce((s,r) => s + r.v, 0);
+
+    const R = state.usdidr;
+    $('#totalMain').textContent = R ? idr(total * R) : usd(total);
+    $('#totalSub').textContent = R ? `${usd(total)}　1 USD = ${idr(R)}${rateLive ? '' : '（概算レート）'}` : '為替レート未取得のためUSD表示';
+
+    // 24h・記録時比
+    let now24 = 0, prev24 = 0;
+    rows.forEach(r => { if (typeof r.chg === 'number') { now24 += r.v; prev24 += r.v / (1 + r.chg/100); } else { now24 += r.v; prev24 += r.v; } });
+    const d24 = prev24 ? (now24/prev24 - 1)*100 : 0;
+    const baseTotal = rows.reduce((s,r) => s + r.q*r.a.base, 0);
+    const dB = baseTotal ? (total/baseTotal - 1)*100 : 0;
+    const e24 = $('#d24'), eB = $('#dBase');
+    e24.textContent = pct(d24); e24.className = cls(d24);
+    eB.textContent  = pct(dB);  eB.className  = cls(dB);
+
+    // 構成比バー
+    $('#bar').innerHTML = rows.filter(r => r.v>0).map(r =>
+      `<i style="width:${(r.v/total*100).toFixed(3)}%;background:${r.a.color}" title="${r.a.id} ${(r.v/total*100).toFixed(1)}%"></i>`
+    ).join('');
+
+    // ステータス
+    paintAsof();
+    const st = $('#status');
+    st.textContent = statusMsg; st.className = statusErr ? 'err' : '';
+    $('#refresh').disabled = busy;
+
+    // 行（入力中は再描画しない）
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+    $('#list').innerHTML = rows.map(r => {
+      const isLive = live.has(r.a.id);
+      const manual = state.prices[r.a.id]?.manual;
+      const needsManual = !isLive && (!r.a.cg);   // 株式系は取得失敗時に手入力可
+      const priceCell = needsManual
+        ? `<input class="px num" data-px="${r.a.id}" inputmode="decimal" value="${r.p}" aria-label="${r.a.id} 価格"><span class="tag">${manual?'手入力':'前回'}${state.prices[r.a.id]?.t ? ' ' + fmtTime(state.prices[r.a.id].t) : ''}</span>`
+        : `<span class="num">${priceFmt(r.p)}</span>${!isLive && state.prices[r.a.id] ? '<span class="tag">前回 ' + fmtTime(state.prices[r.a.id].t) + '</span>' : ''}${!state.prices[r.a.id] ? '<span class="tag">記録時</span>' : ''}`;
+      const chgCell = typeof r.chg === 'number' ? `<span class="num ${cls(r.chg)}">${pct(r.chg)}</span>` : '';
+      return `<li class="row">
+        <div class="l1">
+          <div class="sym"><span class="dot" style="background:${r.a.color}"></span><strong>${esc(r.a.id)}</strong><span class="desc">${esc(r.a.desc)}</span></div>
+          <div class="val num">${R ? idr(r.v*R) : usd(r.v)}</div>
+        </div>
+        <div class="l2">
+          <div class="left">
+            <input class="num" data-qty="${r.a.id}" inputmode="decimal" value="${r.q}" aria-label="${r.a.id} 保有量">
+            <span>×</span>${priceCell}${chgCell}
+          </div>
+          <div class="right num">${(r.v/total*100).toFixed(1)}%${R ? '<br>' + usd(r.v) : ''}</div>
+        </div>
+      </li>`;
+    }).join('');
+  }
+
+  // ---- 価格取得 -----------------------------------------------------------
+  async function fetchJson(url, ms=12000) {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+    try {
+      const res = await fetch(url, {signal: ctl.signal});
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } finally { clearTimeout(t); }
+  }
+
+  async function getCrypto() {
+    const ids = ASSETS.filter(a => a.cg).map(a => a.cg).join(',');
+    const j = await fetchJson(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,idr&include_24hr_change=true`);
+    const now = Date.now(); let n = 0;
+    ASSETS.filter(a => a.cg).forEach(a => {
+      const d = j[a.cg];
+      if (d && typeof d.usd === 'number') {
+        state.prices[a.id] = { p:d.usd, chg:d.usd_24h_change, t:now };
+        live.add(a.id); n++;
+      }
+    });
+    const t = j.tether;
+    if (t && t.usd && t.idr) tetherRate = t.idr / t.usd;   // 為替APIが失敗した時の代用
+    return n;
+  }
+
+  async function getRate() {
+    try {
+      const j = await fetchJson('https://open.er-api.com/v6/latest/USD');
+      const r = j.rates && j.rates.IDR;
+      if (r > 1000) { state.usdidr = r; return true; }
+    } catch {}
+    return false;
+  }
+
+  async function getQQQ() {
+    const target = 'https://query1.finance.yahoo.com/v8/finance/chart/QQQ?interval=1d&range=5d';
+    const routes = [ target, 'https://api.allorigins.win/raw?url=' + encodeURIComponent(target) ];
+    let lastErr;
+    for (const url of routes) {
+      try {
+        const j = await fetchJson(url);
+        const m = j.chart.result[0].meta;
+        const p = m.regularMarketPrice, prev = m.chartPreviousClose ?? m.previousClose;
+        if (typeof p !== 'number') throw new Error('no price');
+        state.prices.QQQ = { p, chg: prev ? (p/prev - 1)*100 : undefined, t: Date.now() };
+        live.add('QQQ');
+        return true;
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr;
+  }
+
+  async function refresh() {
+    if (busy) return;
+    busy = true; statusErr = false; statusMsg = '最新価格を取得中…'; render();
+    live.clear();
+    const [c, q, r] = await Promise.allSettled([getCrypto(), getQQQ(), getRate()]);
+    rateLive = false;
+    if (r.status === 'fulfilled' && r.value) rateLive = true;
+    else if (tetherRate) { state.usdidr = tetherRate; rateLive = true; }
+    const problems = [];
+    if (c.status === 'rejected') problems.push('暗号資産（CoinGecko）');
+    if (q.status === 'rejected') problems.push('QQQ');
+    if (!rateLive) problems.push('為替レート');
+    if (c.status === 'fulfilled' || q.status === 'fulfilled') state.updated = Date.now();
+    if (problems.length === 0) { statusMsg = '最新価格に更新しました'; statusErr = false; }
+    else { statusMsg = `${problems.join('・')}を取得できませんでした。前回価格で表示中`; statusErr = true; }
+    persist(); busy = false; render();
+  }
+
+  // ---- 入力 ---------------------------------------------------------------
+  $('#list').addEventListener('change', e => {
+    const t = e.target;
+    if (t.dataset.qty) {
+      const n = toNum(t.value);
+      if (n !== null) { state.qty[t.dataset.qty] = n; persist(); }
+    } else if (t.dataset.px) {
+      const n = toNum(t.value);
+      if (n !== null && n > 0) { state.prices[t.dataset.px] = { p:n, manual:true, t:Date.now() }; persist(); }
+    }
+    t.blur(); render();
+  });
+  $('#list').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+  $('#refresh').addEventListener('click', refresh);
+  $('#reset').addEventListener('click', () => {
+    if (!confirm('保有量と価格を初期値に戻します。よろしいですか？')) return;
+    state.qty = {}; state.prices = {}; live.clear(); persist(); render(); refresh();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && Date.now() - (state.updated || 0) > REFRESH_MS) refresh();
+  });
+  setInterval(() => { if (!document.hidden) refresh(); }, REFRESH_MS);
+
+  setInterval(paintAsof, 15000);
+  render();
+  refresh();
+})();
+</script>
+</body>
+</html>
