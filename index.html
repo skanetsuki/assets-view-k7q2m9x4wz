@@ -69,12 +69,10 @@
 <body>
 
 <header>
-  <p class="total-label">総評価額</p>
   <p class="total num" id="totalMain">—</p>
   <p class="idr num" id="totalSub"></p>
   <div class="deltas num">
     <span>24時間<b id="d24" class="flat">—</b></span>
-    <span>記録時比<b id="dBase" class="flat">—</b></span>
   </div>
 </header>
 
@@ -155,9 +153,9 @@
   }
   function paintAsof() {
     const el = $('#asof');
-    if (!state.updated) { el.innerHTML = '表示中の価格：シート記録時 <small>（未更新）</small>'; el.className = 'num warn'; return; }
+    if (!state.updated) { el.innerHTML = 'シート記録時 <small>（未更新）</small>'; el.className = 'num warn'; return; }
     const old = Date.now() - state.updated > 10 * 60000;
-    el.innerHTML = `表示中の価格：${fmtTime(state.updated)} 時点 <small>（${fmtAge(state.updated)}）</small>`;
+    el.innerHTML = `${fmtTime(state.updated)} 時点 <small>（${fmtAge(state.updated)}）</small>`;
     el.className = 'num' + (old ? ' warn' : '');
   }
 
@@ -177,11 +175,8 @@
     let now24 = 0, prev24 = 0;
     rows.forEach(r => { if (typeof r.chg === 'number') { now24 += r.v; prev24 += r.v / (1 + r.chg/100); } else { now24 += r.v; prev24 += r.v; } });
     const d24 = prev24 ? (now24/prev24 - 1)*100 : 0;
-    const baseTotal = rows.reduce((s,r) => s + r.q*r.a.base, 0);
-    const dB = baseTotal ? (total/baseTotal - 1)*100 : 0;
-    const e24 = $('#d24'), eB = $('#dBase');
+    const e24 = $('#d24');
     e24.textContent = pct(d24); e24.className = cls(d24);
-    eB.textContent  = pct(dB);  eB.className  = cls(dB);
 
     // 構成比バー
     $('#bar').innerHTML = rows.filter(r => r.v>0).map(r =>
@@ -287,7 +282,7 @@
     if (!rateLive) problems.push('為替レート');
     if (c.status === 'fulfilled' || q.status === 'fulfilled') state.updated = Date.now();
     if (problems.length === 0) { statusMsg = '最新価格に更新しました'; statusErr = false; }
-    else { statusMsg = `${problems.join('・')}を取得できませんでした。前回価格で表示中`; statusErr = true; }
+    else { statusMsg = ''; statusErr = false; }
     persist(); busy = false; render();
   }
 
