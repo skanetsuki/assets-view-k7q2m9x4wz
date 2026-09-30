@@ -87,8 +87,8 @@
 
 <footer>
   保有量はシート「25aug」の値で登録済み。保有量・価格欄はタップして直接編集できます（この端末のブラウザに保存）。<br>
-  評価額は Rp 表示です（USD/IDR は open.er-api.com から取得、失敗時は USDT/IDR で代用）。暗号資産の価格は CoinGecko、QQQ は Yahoo Finance から60秒ごとに取得します。取得できない銘柄は価格欄が入力可能になり、前回または記録時の価格で計算します。<br>
-  記録時 = シート「25aug」の価格。 <button id="reset" type="button">保有量と価格を初期値に戻す</button><br>版：v3 Web版
+  評価額は Rp 表示です（USD/IDR は open.er-api.com から取得、失敗時は USDT/IDR で代用）。暗号資産の価格は CoinGecko、QQQ は Yahoo Finance から60秒ごとに取得します。取得できない銘柄は前回または記録時の価格で計算し、画面に警告を表示します。価格時刻は銘柄ごとに確認できます。QQQ は取得失敗時に価格を手入力できます。<br>
+  記録時 = シート「25aug」の価格。 <button id="reset" type="button">保有量と価格を初期値に戻す</button><br>版：v4 Web版
 </footer>
 
 <script>
@@ -153,10 +153,13 @@
   }
   function paintAsof() {
     const el = $('#asof');
-    if (!state.updated) { el.innerHTML = 'シート記録時 <small>（未更新）</small>'; el.className = 'num warn'; return; }
-    const old = Date.now() - state.updated > 10 * 60000;
-    el.innerHTML = `${fmtTime(state.updated)} 時点 <small>（${fmtAge(state.updated)}）</small>`;
-    el.className = 'num' + (old ? ' warn' : '');
+    const used = ASSETS.filter(a => qtyOf(a) > 0);
+    const missing = used.some(a => !state.prices[a.id]?.t);
+    const times = used.map(a => state.prices[a.id]?.t).filter(t => Number.isFinite(t));
+    if (!times.length) { el.innerHTML = 'シート記録時 <small>（価格未取得）</small>'; el.className = 'num warn'; return; }
+    const oldest = Math.min(...times);
+    el.innerHTML = '使用価格の最古時刻 ' + fmtTime(oldest) + ' <small>（' + fmtAge(oldest) + '）' + (missing ? '・記録時価格を含む' : '') + '</small>';
+    el.className = 'num' + (missing || Date.now() - oldest > 10 * 60000 ? ' warn' : '');
   }
 
   // ---- 描画 ---------------------------------------------------------------
@@ -193,11 +196,13 @@
     if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
     $('#list').innerHTML = rows.map(r => {
       const isLive = live.has(r.a.id);
+      const quoteTime = state.prices[r.a.id]?.t;
       const manual = state.prices[r.a.id]?.manual;
       const needsManual = !isLive && (!r.a.cg);   // 株式系は取得失敗時に手入力可
+      const priceTag = quoteTime ? '<span class="tag">' + (manual ? '手入力' : isLive ? '価格時刻' : '前回') + ' ' + fmtTime(quoteTime) + '</span>' : '<span class="tag">記録時</span>';
       const priceCell = needsManual
-        ? `<input class="px num" data-px="${r.a.id}" inputmode="decimal" value="${r.p}" aria-label="${r.a.id} 価格"><span class="tag">${manual?'手入力':'前回'}${state.prices[r.a.id]?.t ? ' ' + fmtTime(state.prices[r.a.id].t) : ''}</span>`
-        : `<span class="num">${priceFmt(r.p)}</span>${!isLive && state.prices[r.a.id] ? '<span class="tag">前回 ' + fmtTime(state.prices[r.a.id].t) + '</span>' : ''}${!state.prices[r.a.id] ? '<span class="tag">記録時</span>' : ''}`;
+        ? `<input class="px num" data-px="${r.a.id}" inputmode="decimal" value="${r.p}" aria-label="${r.a.id} 価格">${priceTag}`
+        : `<span class="num">${priceFmt(r.p)}</span>${priceTag}`;
       const chgCell = typeof r.chg === 'number' ? `<span class="num ${cls(r.chg)}">${pct(r.chg)}</span>` : '';
       return `<li class="row">
         <div class="l1">
@@ -227,12 +232,12 @@
 
   async function getCrypto() {
     const ids = ASSETS.filter(a => a.cg).map(a => a.cg).join(',');
-    const j = await fetchJson(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,idr&include_24hr_change=true`);
+    const j = await fetchJson(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,idr&include_24hr_change=true&include_last_updated_at=true`);
     const now = Date.now(); let n = 0;
     ASSETS.filter(a => a.cg).forEach(a => {
       const d = j[a.cg];
       if (d && typeof d.usd === 'number') {
-        state.prices[a.id] = { p:d.usd, chg:d.usd_24h_change, t:now };
+        state.prices[a.id] = { p:d.usd, chg:d.usd_24h_change, t: Number.isFinite(d.last_updated_at) && d.last_updated_at > 0 ? d.last_updated_at * 1000 : now };
         live.add(a.id); n++;
       }
     });
@@ -260,7 +265,7 @@
         const m = j.chart.result[0].meta;
         const p = m.regularMarketPrice, prev = m.chartPreviousClose ?? m.previousClose;
         if (typeof p !== 'number') throw new Error('no price');
-        state.prices.QQQ = { p, chg: prev ? (p/prev - 1)*100 : undefined, t: Date.now() };
+        state.prices.QQQ = { p, chg: prev ? (p/prev - 1)*100 : undefined, t: Number.isFinite(m.regularMarketTime) ? m.regularMarketTime * 1000 : Date.now() };
         live.add('QQQ');
         return true;
       } catch (e) { lastErr = e; }
@@ -277,12 +282,13 @@
     if (r.status === 'fulfilled' && r.value) rateLive = true;
     else if (tetherRate) { state.usdidr = tetherRate; rateLive = true; }
     const problems = [];
-    if (c.status === 'rejected') problems.push('暗号資産（CoinGecko）');
+    const expectedCrypto = ASSETS.filter(a => a.cg).length;
+    if (c.status === 'rejected' || c.value < expectedCrypto) problems.push('暗号資産（CoinGecko）');
     if (q.status === 'rejected') problems.push('QQQ');
     if (!rateLive) problems.push('為替レート');
-    if (c.status === 'fulfilled' || q.status === 'fulfilled') state.updated = Date.now();
-    if (problems.length === 0) { statusMsg = '最新価格に更新しました'; statusErr = false; }
-    else { statusMsg = ''; statusErr = false; }
+    if ((c.status === 'fulfilled' && c.value > 0) || q.status === 'fulfilled') state.updated = Date.now();
+    statusMsg = problems.length ? '取得できず前回の値を使用：' + problems.join('・') : '価格を取得しました（各銘柄の価格時刻を確認）';
+    statusErr = problems.length > 0;
     persist(); busy = false; render();
   }
 
@@ -317,3 +323,4 @@
 </script>
 </body>
 </html>
+
