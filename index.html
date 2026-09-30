@@ -179,7 +179,7 @@
       const quoteTime = state.prices[r.a.id]?.t;
       const manual = state.prices[r.a.id]?.manual;
       const needsManual = !isLive && (!r.a.cg);   // 株式系は取得失敗時に手入力可
-      const priceTag = quoteTime ? '<span class="tag">' + (manual ? '手入力' : isLive ? '価格時刻' : '前回') + ' ' + fmtTime(quoteTime) + '</span>' : '<span class="tag">記録時</span>';
+      const priceTag = r.a.id === 'QQQ' ? '' : quoteTime ? '<span class="tag">' + (manual ? '手入力' : isLive ? '価格時刻' : '前回') + ' ' + fmtTime(quoteTime) + '</span>' : '<span class="tag">記録時</span>';
       const priceCell = needsManual
         ? `<input class="px num" data-px="${r.a.id}" inputmode="decimal" value="${r.p}" aria-label="${r.a.id} 価格">${priceTag}`
         : `<span class="num">${priceFmt(r.p)}</span>${priceTag}`;
