@@ -121,6 +121,7 @@
   };
   const live = new Set();          // 今回の取得に成功した銘柄
   let statusMsg = '最新価格を取得中…', statusErr = false, busy = false, tetherRate = null, rateLive = false;
+  let cryptoRetryAt = 0;
 
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} };
   const $ = s => document.querySelector(s);
@@ -227,6 +228,10 @@
       const res = await fetch(url, {signal: ctl.signal});
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return await res.json();
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('タイムアウト');
+      if (e instanceof TypeError) throw new Error('通信/CORS');
+      throw e;
     } finally { clearTimeout(t); }
   }
 
@@ -277,13 +282,20 @@
     if (busy) return;
     busy = true; statusErr = false; statusMsg = '最新価格を取得中…'; render();
     live.clear();
-    const [c, q, r] = await Promise.allSettled([getCrypto(), getQQQ(), getRate()]);
+    const [c, q, r] = await Promise.allSettled([
+      Date.now() >= cryptoRetryAt ? getCrypto() : Promise.reject(new Error('HTTP 429 待機中')),
+      getQQQ(), getRate()
+    ]);
     rateLive = false;
     if (r.status === 'fulfilled' && r.value) rateLive = true;
     else if (tetherRate) { state.usdidr = tetherRate; rateLive = true; }
     const problems = [];
     const expectedCrypto = ASSETS.filter(a => a.cg).length;
-    if (c.status === 'rejected' || c.value < expectedCrypto) problems.push('暗号資産（CoinGecko）');
+    if (c.status === 'rejected') {
+      const reason = c.reason?.message || '不明なエラー';
+      if (reason === 'HTTP 429') cryptoRetryAt = Date.now() + 5 * 60000;
+      problems.push('暗号資産（CoinGecko: ' + reason + '）');
+    } else if (c.value < expectedCrypto) problems.push('暗号資産（CoinGecko: 一部銘柄なし）');
     if (q.status === 'rejected') problems.push('QQQ');
     if (!rateLive) problems.push('為替レート');
     if ((c.status === 'fulfilled' && c.value > 0) || q.status === 'fulfilled') state.updated = Date.now();
@@ -305,7 +317,7 @@
     t.blur(); render();
   });
   $('#list').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
-  $('#refresh').addEventListener('click', refresh);
+  $('#refresh').addEventListener('click', () => { cryptoRetryAt = 0; refresh(); });
   $('#reset').addEventListener('click', () => {
     if (!confirm('保有量と価格を初期値に戻します。よろしいですか？')) return;
     state.qty = {}; state.prices = {}; live.clear(); persist(); render(); refresh();
@@ -323,4 +335,3 @@
 </script>
 </body>
 </html>
-
